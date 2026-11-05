@@ -51,14 +51,14 @@ pub fn print_otps(vault_json: &Value) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    println!("\n--- OTP RICAVATI DAL VAULT AEGIS ---");
+    println!("\n--- OTP ---");
     for entry in entries {
         println!(
-            "[{:<12}] {} | codice: {} | scade tra: {}",
-            entry.kind.to_uppercase(),
-            entry.service,
+            "{} | {:0>2} s | {}",
             entry.code,
-            entry.remaining_time_text()
+            entry.remaining_seconds,
+            // entry.remaining_time_text(),
+            entry.service,
         );
     }
 

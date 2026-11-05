@@ -11,3 +11,8 @@ base64 = "0.22"
 hex = "0.4"
 rpassword = "7.3"
 aes-gcm = { version = "0.11.1", features = ["aes"] }
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+data-encoding = "2.6"
+

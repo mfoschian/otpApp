@@ -1,14 +1,10 @@
 mod aegis;
+mod otp;
 
-
-// use aes_gcm::aead::{Aead, KeyInit, Payload};
-// use aes_gcm::{Aes256Gcm, Key, Nonce};
-// use scrypt::{Params, scrypt};
-// use serde::Deserialize;
 use std::env;
-// use std::fs;
 use std::path::Path;
-
+use std::thread;
+use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// Legge il percorso del file dai parametri della riga di comando
@@ -31,10 +27,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Lettura del file in corso: {}", file_path);
 	let parsed_json = aegis::read_vault(file_path, &password)?;
 
+	loop {
+		// Estrae e mostra i codici OTP disponibili dal vault decifrato
+		otp::print_otps(&parsed_json)?;
 
-	// Formattazione e stampa a schermo del JSON decifrato
-	println!("\n--- CONTENUTO DELLA CASSAFORTE AEGIS (JSON DECIFRATO) ---");
-	println!("{}", serde_json::to_string_pretty(&parsed_json)?);
+		thread::sleep(Duration::from_secs(1));
 
-	Ok(())
+
+	}
+
+	// Ok(())
 }

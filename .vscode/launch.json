@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Aegis Reader",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/aegis_reader",
+            "args": [
+                "${workspaceFolder}/data/backup.json"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "sourceLanguages": [
+                "rust"
+            ]
+        }
+    ]
+}

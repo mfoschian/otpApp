@@ -1,10 +1,10 @@
-mod aegis;
-mod otp;
+// mod otp;
+pub mod vaults;
 
 use std::env;
 use std::path::Path;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// Legge il percorso del file dai parametri della riga di comando
@@ -25,15 +25,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	// Legge e analizza il JSON del file Aegis
 	println!("Lettura del file in corso: {}", file_path);
-	let parsed_json = aegis::read_vault(file_path, &password)?;
+	let vault = vaults::get_vault_content(vaults::VaultKind::Aegis, file_path, &password)?;
+
+	if vault.entries.is_empty() {
+		println!("Nessun OTP trovato nel vault decifrato.");
+		return Ok(());
+	}
 
 	loop {
+		let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+		let otps = vault.get_otps(now)?;
 		// Estrae e mostra i codici OTP disponibili dal vault decifrato
-		otp::print_otps(&parsed_json)?;
 
+		println!("\n--- OTP ---");
+
+		for entry in otps {
+			println!(
+				"{} | {:0>2} s | {}",
+				entry.code,
+				entry.remaining_seconds,
+				entry.issuer,
+
+			);
+		}
 		thread::sleep(Duration::from_secs(1));
-
-
 	}
 
 	// Ok(())

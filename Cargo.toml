@@ -1,9 +1,10 @@
 [package]
-name = "aegis_reader"
+name = "otpApp"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+eframe = "0.25"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 scrypt = { version = "0.11", default-features = false, features = ["std"] }
@@ -16,3 +17,6 @@ sha2 = "0.10"
 hmac = "0.12"
 data-encoding = "2.6"
 
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["winuser"] }

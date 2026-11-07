@@ -1,20 +1,51 @@
+use crate::vaults;
+use crate::{
+    ui::AppStatus::Starting,
+    vaults::{Otp, VaultContent},
+};
 use eframe::egui;
-use crate::vaults::{VaultContent, Otp};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-// use otp::OtpEntry;
-
-
-pub struct OtpApp {
-    vault: VaultContent,
-    otps: Vec<Otp>,
+struct VaultFileInfo {
+    file_path: Option<String>,
+    password: Option<String>,
+	editing_pwd: String,
 }
 
-impl OtpApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, vault: VaultContent) -> Self {
+struct RunInfo {
+    vault: VaultContent,
+    otps: Vec<Otp>,
+    last_update: Instant,
+}
+
+impl RunInfo {
+    pub fn new(vault: VaultContent) -> Self {
         Self {
             vault,
             otps: Vec::new(),
+            last_update: Instant::now(),
         }
+    }
+
+    pub fn touch(self: &mut Self) {
+        self.last_update = Instant::now();
+    }
+}
+
+enum AppStatus {
+    Starting,
+    Error(String),
+    Loading(VaultFileInfo),
+    Running(RunInfo),
+}
+
+pub struct OtpApp {
+    status: AppStatus,
+}
+
+impl OtpApp {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        Self { status: Starting }
     }
 
     /// Disegna una progress bar circolare personalizzata
@@ -66,50 +97,174 @@ impl OtpApp {
     }
 }
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 impl eframe::App for OtpApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Aggiorna lo stato di tutti i token OTP
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        self.otps = self.vault.get_otps(now).unwrap_or_default();
+        let status = &mut self.status;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Services");
-            ui.add_space(10.0);
+            match status {
+                AppStatus::Starting => {
+                    ui.heading("Services");
+                    ui.add_space(10.0);
 
-            // Tabella o lista visiva
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for otp in &mut self.otps {
-                    ui.group(|ui| {
-                        ui.horizontal(|ui| {
-                            // Informazioni del sito e codice OTP
-                            ui.vertical(|ui| {
-                                ui.label(egui::RichText::new(&otp.issuer).strong().size(16.0));
-                                ui.label(
-                                    egui::RichText::new(&otp.code)
-                                        .font(egui::FontId::monospace(22.0))
-                                        .color(egui::Color32::from_rgb(46, 204, 113)),
-                                );
-                            });
+                    // ui.label(egui::RichText::new("...").strong().size(16.0));
+                    ui.label(
+                        egui::RichText::new("Nessun servizio configurato")
+                            .strong()
+                            .size(16.0),
+                    );
 
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                // Calcola la percentuale di progresso (da 1.0 a 0.0)
-                                let progress = (otp.remaining_seconds as f32 / otp.period as f32).clamp(0.0, 1.0);
-                                let seconds_text = format!("{:.0}s", otp.remaining_seconds);
-
-                                // Disegna la progress bar circolare
-                                Self::draw_circular_progress(ui, progress, &seconds_text);
-                            });
+                    let but_load = ui.button("Carica vault");
+                    if but_load.clicked() {
+                        *status = AppStatus::Loading(VaultFileInfo {
+                            file_path: None,
+                            password: None,
+							editing_pwd: String::default(),
                         });
-                    });
-                    ui.add_space(5.0);
+                        ctx.request_repaint();
+                    }
                 }
-            });
-        });
+                AppStatus::Loading(loading_info) => {
+                    ui.heading("Apertura vault");
+                    ui.add_space(10.0);
 
-        // Richiede un redraw continuo per mantenere l'animazione fluida del timer
-        ctx.request_repaint();
+                    if let Some(file_path) = &loading_info.file_path {
+                        if let Some(pwd) = &loading_info.password {
+							ui.label(egui::RichText::new("Caricamento in corso".to_string()).strong().size(16.0));
+
+                            let vault = vaults::get_vault_content(
+                                vaults::VaultKind::Aegis,
+                                file_path,
+                                &pwd,
+                            );
+
+                            *status = if let Ok(v) = vault {
+                                AppStatus::Running(RunInfo::new(v))
+                            } else {
+                                AppStatus::Error("Lettura del vault fallita!".to_string())
+                            };
+
+							ctx.request_repaint();
+                        }
+						else {
+                            // Chiedi password ?
+							ui.label(egui::RichText::new("Inserire la password per {}".to_string()).strong().size(16.0));
+                            ui.add_space(8.0);
+
+							ui.add_sized(
+								[300.0, 38.0],
+								egui::TextEdit::singleline(&mut loading_info.editing_pwd)
+									.password(true)
+									// .hint_text("Enter your password"),
+							);
+							ui.add_space(12.0);
+							ui.horizontal(|ui| {
+								if ui.button("OK").clicked() {
+									loading_info.password = Some(loading_info.editing_pwd.clone());
+									loading_info.editing_pwd = String::default();
+									ctx.request_repaint();
+								}
+
+								if ui.button("Annulla").clicked() {
+									loading_info.file_path = None;
+									loading_info.password = None;
+									loading_info.editing_pwd = String::default();
+									ctx.request_repaint();
+								}
+							});
+						}
+                    }
+					else {
+						ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
+
+                        // ctx.request_repaint();
+
+                        let files = rfd::FileDialog::new()
+                            // .add_filter("text", &["txt", "rs"])
+                            // .add_filter("rust", &["rs", "toml"])
+                            // .set_directory("/")
+                            .pick_file();
+
+                        if let Some(file) = files {
+                            if let Ok(path) = file.into_string() {
+								loading_info.file_path = Some(path);
+								ctx.request_repaint();
+                            }
+                        }
+                    }
+
+                }
+                AppStatus::Error(message) => {
+                    ui.heading("Services");
+                    ui.add_space(10.0);
+
+                    ui.label(
+                        egui::RichText::new(format!("Error: {}", message))
+                            .strong()
+                            .size(16.0),
+                    );
+                }
+                AppStatus::Running(app) => {
+                    if app.last_update.elapsed() >= Duration::from_secs(1) {
+                        app.touch();
+
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+
+                        app.otps = app.vault.get_otps(now).unwrap_or_default();
+                    }
+
+                    ui.heading("Services");
+                    ui.add_space(10.0);
+
+                    // Tabella o lista visiva
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for otp in &mut app.otps {
+                            ui.group(|ui| {
+                                ui.horizontal(|ui| {
+                                    // Informazioni del sito e codice OTP
+                                    ui.vertical(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(&otp.issuer).strong().size(16.0),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(&otp.code)
+                                                .font(egui::FontId::monospace(22.0))
+                                                .color(egui::Color32::from_rgb(46, 204, 113)),
+                                        );
+                                    });
+
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            // Calcola la percentuale di progresso (da 1.0 a 0.0)
+                                            let progress = (otp.remaining_seconds as f32
+                                                / otp.period as f32)
+                                                .clamp(0.0, 1.0);
+                                            let seconds_text =
+                                                format!("{:.0}s", otp.remaining_seconds);
+
+                                            // Disegna la progress bar circolare
+                                            Self::draw_circular_progress(
+                                                ui,
+                                                progress,
+                                                &seconds_text,
+                                            );
+                                        },
+                                    );
+                                });
+                            });
+                            ui.add_space(5.0);
+                        }
+                    });
+
+                    // Richiede un redraw continuo per mantenere l'animazione fluida del timer
+                    // ctx.request_repaint();
+                    ctx.request_repaint_after(Duration::from_secs(1));
+                }
+            }
+        });
     }
 }
-

@@ -17,6 +17,7 @@ pub struct Otp {
 	pub name: String,
 	pub code: String,
 	pub remaining_seconds: u64,
+	pub period: u64,
 }
 
 pub struct VaultContent {
@@ -161,7 +162,8 @@ fn generate_code(
 		issuer: issuer.to_string(),
 		name: name.to_string(),
 		code: format!("{:0width$}", otp, width = digits as usize),
-		remaining_seconds
+		remaining_seconds,
+		period,
 	};
 
 	Ok(result)

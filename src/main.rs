@@ -1,12 +1,14 @@
-// mod otp;
+mod ui;
 pub mod vaults;
 
 use std::env;
 use std::path::Path;
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+use eframe::egui;
+
+
+fn main() -> Result<(), eframe::Error> {
+
 	// Legge il percorso del file dai parametri della riga di comando
 	let args: Vec<String> = env::args().collect();
 	if args.len() < 2 {
@@ -21,35 +23,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
 	// Richiede la password all'utente in modo sicuro (senza mostrarla a schermo)
-	let password = rpassword::prompt_password("Inserisci la password della cassaforte Aegis: ")?;
+	let password = if let Ok(pwd) = rpassword::prompt_password("Inserisci la password della cassaforte Aegis: ") {
+		pwd
+	}
+	 else {
+		panic!("Impossibile avviare l'applicazione");
+	};
 
 	// Legge e analizza il JSON del file Aegis
 	println!("Lettura del file in corso: {}", file_path);
-	let vault = vaults::get_vault_content(vaults::VaultKind::Aegis, file_path, &password)?;
+	let vault = if let Ok(v) = vaults::get_vault_content(vaults::VaultKind::Aegis, file_path, &password) {
+		v
+	}
+	else {
+		panic!("Lettura del vault fallita!");
+	};
 
 	if vault.entries.is_empty() {
 		println!("Nessun OTP trovato nel vault decifrato.");
 		return Ok(());
 	}
 
-	loop {
-		let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-		let otps = vault.get_otps(now)?;
-		// Estrae e mostra i codici OTP disponibili dal vault decifrato
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([350.0, 400.0])
+            .with_title("OTP Manager"),
+        ..Default::default()
+    };
 
-		println!("\n--- OTP ---");
-
-		for entry in otps {
-			println!(
-				"{} | {:0>2} s | {}",
-				entry.code,
-				entry.remaining_seconds,
-				entry.issuer,
-
-			);
-		}
-		thread::sleep(Duration::from_secs(1));
-	}
-
-	// Ok(())
+    eframe::run_native(
+        "OTP Manager",
+        options,
+        Box::new(|cc| Box::new(ui::OtpApp::new(cc, vault))),
+    )
 }
+

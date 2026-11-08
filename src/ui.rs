@@ -31,20 +31,35 @@ enum AppStatus {
 	Starting,
 	GetVault,
 	GetPassword,
+	ShowLoadingMessage,
 	Loading,
-	Running(RunInfo),
-	Error(String),
+	Running,
+	Error,
 }
 
 pub struct OtpApp {
 	status: AppStatus,
 	file_path: String,
 	password: String,
+	vault_info: RunInfo,
+	error: Option<String>,
 }
 
 impl OtpApp {
+
+
 	pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-		Self { status: Starting, file_path: String::default(), password: String::default() }
+		Self {
+			status: Starting,
+			file_path: String::default(),
+			password: String::default(),
+			vault_info: RunInfo {
+				vault: VaultContent { entries: Vec::new() },
+				otps: Vec::new(),
+				last_update: Instant::now(),				
+			},
+			error: None,
+		}
 	}
 
 	/// Disegna una progress bar circolare personalizzata
@@ -94,20 +109,46 @@ impl OtpApp {
 			ui.visuals().text_color(),
 		);
 	}
+
+	fn header(&self, ui: &mut egui::Ui, title: &str) {
+		ui.heading(title);
+		ui.add_space(10.0);
+	}
+
+	fn header_and_msg(&self, ui: &mut egui::Ui, title: &str, msg: &str) {
+		self.header(ui,title);
+
+		ui.label(egui::RichText::new(msg).strong().size(16.0));
+		ui.add_space(8.0);
+	}
+
+	fn show_error(&self, ui: &mut egui::Ui, message: Option<&String>) {
+		let msg = if let Some(text) = message {
+			text
+		} else {
+			"Unknown"
+		};
+		ui.label(
+			egui::RichText::new(format!("Error: {}", msg))
+				.strong()
+				.size(16.0),
+		);
+	}
+
 }
 
 impl eframe::App for OtpApp {
+
+
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
-		let status = &mut self.status;
+		// let status = &mut self.status;
 
 		egui::CentralPanel::default().show(ctx, |ui| {
-			match status {
+			match self.status {
 				AppStatus::Starting => {
-					ui.heading("Services");
-					ui.add_space(10.0);
+					self.header(ui, "Services");
 
-					// ui.label(egui::RichText::new("...").strong().size(16.0));
 					ui.label(
 						egui::RichText::new("Nessun servizio configurato")
 							.strong()
@@ -116,9 +157,12 @@ impl eframe::App for OtpApp {
 
 					let but_load = ui.button("Carica vault");
 					if but_load.clicked() {
-						*status = AppStatus::GetVault;
+						self.status = AppStatus::GetVault;
 						ctx.request_repaint();
 					}
+
+					self.error = None;
+					self.password = String::default();
 				},
 				AppStatus::GetVault => {
 					ui.heading("Apertura vault");
@@ -138,22 +182,19 @@ impl eframe::App for OtpApp {
 					if let Some(file) = files {
 						if let Ok(path) = file.into_string() {
 							self.file_path = path;
-							*status = AppStatus::GetPassword;
+							self.status = AppStatus::GetPassword;
 							ok = true;
 						}
 					}
 
 					if !ok {
-						*status = AppStatus::Starting;
+						self.status = AppStatus::Starting;
 					}
 					ctx.request_repaint();
 				},
 				AppStatus::GetPassword => {
-					ui.heading("Vault password");
-					ui.add_space(10.0);
+					self.header_and_msg(ui,"Vault password", "Inserire la password");
 
-					ui.label(egui::RichText::new("Inserire la password per {}".to_string()).strong().size(16.0));
-					ui.add_space(8.0);
 
 					ui.add_sized(
 						[300.0, 38.0],
@@ -165,20 +206,25 @@ impl eframe::App for OtpApp {
 
 					ui.horizontal(|ui| {
 						if ui.button("OK").clicked() {
-						*status = AppStatus::Loading;
+						self.status = AppStatus::ShowLoadingMessage;
 						ctx.request_repaint();
 					}
 
 						if ui.button("Annulla").clicked() {
-							*status = AppStatus::Starting;
+							self.status = AppStatus::Starting;
 							ctx.request_repaint();
 						}
 					});
 				},
+				AppStatus::ShowLoadingMessage => {
+					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
+
+					self.status = AppStatus::Loading;
+
+					ctx.request_repaint();
+				},
 				AppStatus::Loading => {
-					ui.heading("Lettura vault");
-					ui.add_space(10.0);
-					ui.label(egui::RichText::new("Caricamento in corso".to_string()).strong().size(16.0));
+					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
 
 					let vault = vaults::get_vault_content(
 						vaults::VaultKind::Aegis,
@@ -186,42 +232,33 @@ impl eframe::App for OtpApp {
 						&self.password,
 					);
 
-					*status = if let Ok(v) = vault {
-						AppStatus::Running(RunInfo::new(v))
+					if let Ok(v) = vault {
+						self.status = AppStatus::Running;
+						self.vault_info = RunInfo::new(v);
 					} else {
-						AppStatus::Error("Lettura del vault fallita!".to_string())
-					};
+						self.error = Some("Lettura del vault fallita!".to_string());
+						self.status = AppStatus::Error;
+					}
 
 					ctx.request_repaint();
 				},
-				AppStatus::Error(message) => {
-					ui.heading("Services");
-					ui.add_space(10.0);
-
-					ui.label(
-						egui::RichText::new(format!("Error: {}", message))
-							.strong()
-							.size(16.0),
-					);
-				},
-				AppStatus::Running(app) => {
-					if app.last_update.elapsed() >= Duration::from_secs(1) {
-						app.touch();
+				AppStatus::Running => {
+					if self.vault_info.last_update.elapsed() >= Duration::from_secs(1) {
+						self.vault_info.touch();
 
 						let now = SystemTime::now()
 							.duration_since(UNIX_EPOCH)
 							.unwrap()
 							.as_secs();
 
-						app.otps = app.vault.get_otps(now).unwrap_or_default();
+						self.vault_info.otps = self.vault_info.vault.get_otps(now).unwrap_or_default();
 					}
 
-					ui.heading("Services");
-					ui.add_space(10.0);
+					self.header(ui,"Services");
 
 					// Tabella o lista visiva
 					egui::ScrollArea::vertical().show(ui, |ui| {
-						for otp in &mut app.otps {
+						for otp in &mut self.vault_info.otps {
 							ui.group(|ui| {
 								ui.horizontal(|ui| {
 									// Informazioni del sito e codice OTP
@@ -263,6 +300,18 @@ impl eframe::App for OtpApp {
 					// Richiede un redraw continuo per mantenere l'animazione fluida del timer
 					// ctx.request_repaint();
 					ctx.request_repaint_after(Duration::from_secs(1));
+				},
+				AppStatus::Error => {
+					self.header(ui,"Something went wrong");
+
+					self.show_error(ui, self.error.as_ref());
+
+					ui.add_space(12.0);
+
+					if ui.button("Restart").clicked() {
+						self.status = AppStatus::Starting;
+						ctx.request_repaint();
+					}
 				},
 			}
 		});

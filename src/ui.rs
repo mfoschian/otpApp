@@ -1,11 +1,15 @@
-use crate::vaults;
+// use crate::vaults;
+use crate::storage;
 use crate::{
 	ui::AppStatus::Starting,
 	vaults::{Otp, VaultContent},
 };
 use eframe::egui;
+use hmac::digest::typenum::Le;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::path::PathBuf;
 
+const USER_VAULT_NAME: &str = ".otp-vault";
 
 struct RunInfo {
 	vault: VaultContent,
@@ -26,10 +30,10 @@ impl RunInfo {
 		self.last_update = Instant::now();
 	}
 }
-
 enum AppStatus {
 	Starting,
 	GetVault,
+	ImportVault,
 	GetPassword,
 	ShowLoadingMessage,
 	Loading,
@@ -39,7 +43,8 @@ enum AppStatus {
 
 pub struct OtpApp {
 	status: AppStatus,
-	file_path: String,
+	// file_path: String,
+	file_path: PathBuf,
 	password: String,
 	vault_info: RunInfo,
 	error: Option<String>,
@@ -51,7 +56,7 @@ impl OtpApp {
 	pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
 			status: Starting,
-			file_path: String::default(),
+			file_path: PathBuf::default(),
 			password: String::default(),
 			vault_info: RunInfo {
 				vault: VaultContent { entries: Vec::new() },
@@ -164,32 +169,51 @@ impl eframe::App for OtpApp {
 					self.error = None;
 					self.password = String::default();
 				},
+				AppStatus::ImportVault => {
+					self.status = AppStatus::GetPassword;
+					ctx.request_repaint();
+
+					// ui.heading("Apertura vault");
+					// ui.add_space(10.0);
+					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
+
+					// // ctx.request_repaint();
+
+					// let files = rfd::FileDialog::new()
+					// 	// .add_filter("text", &["txt", "rs"])
+					// 	// .add_filter("rust", &["rs", "toml"])
+					// 	// .set_directory("/")
+					// 	.pick_file();
+
+					// let mut ok = false;
+
+					// if let Some(file) = files {
+					// 	if let Ok(path) = file.into_string() {
+					// 		self.file_path = path;
+					// 		self.status = AppStatus::GetPassword;
+					// 		ok = true;
+					// 	}
+					// }
+
+					// if !ok {
+					// 	self.status = AppStatus::Starting;
+					// }
+					// ctx.request_repaint();
+				},
 				AppStatus::GetVault => {
 					ui.heading("Apertura vault");
 					ui.add_space(10.0);
-					ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
+					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
 
-					// ctx.request_repaint();
-
-					let files = rfd::FileDialog::new()
-						// .add_filter("text", &["txt", "rs"])
-						// .add_filter("rust", &["rs", "toml"])
-						// .set_directory("/")
-						.pick_file();
-
-					let mut ok = false;
-
-					if let Some(file) = files {
-						if let Ok(path) = file.into_string() {
-							self.file_path = path;
-							self.status = AppStatus::GetPassword;
-							ok = true;
-						}
+					if let Some(home) = std::env::home_dir() {
+						self.file_path = home.join(USER_VAULT_NAME);
+						self.status = AppStatus::GetPassword;
+					}
+					else {
+						self.error = Some("Vault non trovato".to_string());
+						self.status = AppStatus::Error;
 					}
 
-					if !ok {
-						self.status = AppStatus::Starting;
-					}
 					ctx.request_repaint();
 				},
 				AppStatus::GetPassword => {
@@ -226,11 +250,12 @@ impl eframe::App for OtpApp {
 				AppStatus::Loading => {
 					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
 
-					let vault = vaults::get_vault_content(
-						vaults::VaultKind::Aegis,
-						&self.file_path,
-						&self.password,
-					);
+					let vault = storage::open_config(self.file_path, &self.password);
+					// let vault = vaults::get_vault_content(
+					// 	vaults::VaultKind::Aegis,
+					// 	&self.file_path,
+					// 	&self.password,
+					// );
 
 					if let Ok(v) = vault {
 						self.status = AppStatus::Running;

@@ -2,6 +2,7 @@
 
 mod ui;
 pub mod vaults;
+pub mod storage;
 
 use eframe::egui;
 

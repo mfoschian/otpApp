@@ -1,6 +1,9 @@
 mod aegis;
 
+use serde::{Deserialize, Serialize};
 use std::error::Error;
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Entry {
 	pub issuer: String,
 	pub name: String,
@@ -20,6 +23,7 @@ pub struct Otp {
 	pub period: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VaultContent {
 	pub entries: Vec<Entry>,
 }

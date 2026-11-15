@@ -17,6 +17,10 @@ sha2 = "0.10"
 hmac = "0.12"
 data-encoding = "2.6"
 rfd = "0.18.0"
+argon2 = "0.5"
+keyring = { version = "3", features = ["windows-native"] }
+rand = "0.8"
+whoami = "1"
 
 
 [target.'cfg(windows)'.dependencies]

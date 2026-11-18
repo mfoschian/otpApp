@@ -153,7 +153,7 @@ impl eframe::App for OtpApp {
 
 					self.error = None;
 
-					if let Some(password) = pwdmgr::retrieve_password() {
+					if let Ok(password) = pwdmgr::retrieve_password() {
 
 						if let Some(home) = std::env::home_dir() {
 							self.file_path = home.join(USER_VAULT_NAME);
@@ -200,7 +200,7 @@ impl eframe::App for OtpApp {
 
 					if ui.button("OK").clicked() {
 						if !self.password.is_empty() {
-							if let Ok(_) = pwdmgr::store_password(self.password) {
+							if let Ok(_) = pwdmgr::store_password(&self.password) {
 								self.status = AppStatus::Starting;
 							}
 							else {
@@ -222,14 +222,26 @@ impl eframe::App for OtpApp {
 				AppStatus::Loading => {
 					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
 
-					let vault = storage::open_config(self.file_path, &self.password);
-
-					if let Ok(v) = vault {
+					let vault_file = self.file_path.clone();
+					let mut vault_found = false;
+					if let Ok(found) = std::fs::exists(&vault_file) {
+						vault_found = found;
+					}
+					if( vault_found ) {
+						let vault = storage::open_config(&vault_file, &self.password);
+	
+						if let Ok(v) = vault {
+							self.status = AppStatus::Running;
+							self.vault_info = RunInfo::new(v);
+						} else {
+							self.error = Some("Lettura del vault fallita!".to_string());
+							self.status = AppStatus::Error;
+						}
+					}
+					else {
+						self.error = Some("Vault non trovato!".to_string());
 						self.status = AppStatus::Running;
-						self.vault_info = RunInfo::new(v);
-					} else {
-						self.error = Some("Lettura del vault fallita!".to_string());
-						self.status = AppStatus::Error;
+						// No file found
 					}
 
 					ctx.request_repaint();
@@ -289,7 +301,7 @@ impl eframe::App for OtpApp {
 						}
 
 						if ui.button("Import").clicked() {
-							self.status = AppStatus::ImportVault;
+							self.status = AppStatus::ImportVaultOptions;
 							ctx.request_repaint();
 						};
 					});
@@ -340,10 +352,10 @@ impl eframe::App for OtpApp {
 					ui.add_space(10.0);
 					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
 
-					if let Ok(file_name) = self.file_path.into_string() {
+					if let Ok(file_name) = self.file_path.clone().into_string() {
 						if let Ok(vault) = vaults::get_vault_content(VaultKind::Aegis, &file_name, &self.password) {
 							vault.entries.iter().for_each(|entry| {
-								self.vault_info.vault.entries.push(*entry);
+								self.vault_info.vault.entries.push(entry.clone());
 							});
 							self.status = AppStatus::Running;
 						}

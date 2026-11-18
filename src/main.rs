@@ -3,6 +3,7 @@
 mod ui;
 pub mod vaults;
 pub mod storage;
+mod pwdmgr;
 
 use eframe::egui;
 

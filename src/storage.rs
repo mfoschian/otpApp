@@ -5,7 +5,7 @@ use aes_gcm::{
 use argon2::Argon2;
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::error::Error;
 use std::fs;
 use std::io;
@@ -32,8 +32,10 @@ fn encode_token(token: &str, password: &str) -> Result<String, Box<dyn Error>> {
     let key = derive_key(password, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid encryption key"))?;
+    let nonce = Nonce::try_from(nonce_bytes.as_slice())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid nonce"))?;
     let ciphertext = cipher
-        .encrypt(Nonce::from_slice(&nonce_bytes), token.as_bytes())
+        .encrypt(&nonce, token.as_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::Other, "token encryption failed"))?;
 
     let mut payload = Vec::with_capacity(SALT_LEN + NONCE_LEN + ciphertext.len());
@@ -53,13 +55,14 @@ fn decrypt_token(token: &str, password: &str) -> Result<String, Box<dyn Error>> 
     }
 
     let salt = &payload[..SALT_LEN];
-    let nonce = Nonce::from_slice(&payload[SALT_LEN..SALT_LEN + NONCE_LEN]);
+    let nonce = Nonce::try_from(&payload[SALT_LEN..SALT_LEN + NONCE_LEN])
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid nonce"))?;
     let ciphertext = &payload[SALT_LEN + NONCE_LEN..];
     let key = derive_key(password, salt)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid encryption key"))?;
     let plaintext = cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "token decryption failed"))?;
 
     Ok(String::from_utf8(plaintext)?)
@@ -74,9 +77,8 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], io::Error> {
 }
 
 fn encrypt_vault(vault: &VaultContent, password: &str) -> Result<VaultContent, Box<dyn Error>> {
-
-    let entries: Vec<Entry> = vault.entries.iter().map(|entry|
-        Entry {
+    let entries = vault.entries.iter().map(|entry| {
+        Ok(Entry {
             issuer: entry.issuer.clone(),
             name: entry.name.clone(),
             kind: entry.kind.clone(),
@@ -84,9 +86,9 @@ fn encrypt_vault(vault: &VaultContent, password: &str) -> Result<VaultContent, B
             digits: entry.digits,
             period: entry.period,
             counter: entry.counter,
-            secret: encode_token(&entry.secret, password).unwrap()
-        }
-    ).collect();
+            secret: encode_token(&entry.secret, password)?,
+        })
+    }).collect::<Result<Vec<Entry>, Box<dyn Error>>>()?;
 
     let enc_vault = VaultContent { entries };
     Ok(enc_vault)
@@ -107,15 +109,15 @@ pub fn save_vault(vault: &VaultContent, output_path: &PathBuf, password: &str) -
 
 
 
-pub fn open_config(path: PathBuf, password: &str) -> Result<VaultContent, Box<dyn Error>> {
+pub fn open_config(path: &PathBuf, password: &str) -> Result<VaultContent, Box<dyn Error>> {
     let contents = fs::read_to_string(path)?;
-    let mut vault = serde_json::from_str(&contents)?;
+    let mut vault: VaultContent = serde_json::from_str(&contents)?;
 
     for entry in &mut vault.entries {
         entry.secret = decrypt_token(&entry.secret, &password)?;
     }
 
-    vault
+    Ok(vault)
 }
 
 /*

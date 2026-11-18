@@ -1,4 +1,5 @@
 
+use std::error::Error;
 
 fn keyring_entry() -> Result<keyring::Entry, Box<dyn Error>> {
     let username = whoami::username();

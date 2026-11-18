@@ -3,7 +3,7 @@ mod aegis;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
 	pub issuer: String,
 	pub name: String,

@@ -75,11 +75,8 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], io::Error> {
 
 fn encrypt_vault(vault: &VaultContent, password: &str) -> Result<VaultContent, Box<dyn Error>> {
 
-    let enc_vault = VaultContent { entries: vec!() };
-    let secret = encode_token(token, password)?;
-
-    for entry in &mut vault.entries {
-        let e = Entry {
+    let entries: Vec<Entry> = vault.entries.iter().map(|entry|
+        Entry {
             issuer: entry.issuer.clone(),
             name: entry.name.clone(),
             kind: entry.kind.clone(),
@@ -87,23 +84,24 @@ fn encrypt_vault(vault: &VaultContent, password: &str) -> Result<VaultContent, B
             digits: entry.digits,
             period: entry.period,
             counter: entry.counter,
-            secret,
-        };
-    }
+            secret: encode_token(&entry.secret, password).unwrap()
+        }
+    ).collect();
 
-    Ok(enc_vault);
+    let enc_vault = VaultContent { entries };
+    Ok(enc_vault)
 }
 
 pub fn save_vault(vault: &VaultContent, output_path: &PathBuf, password: &str) -> Result<(), Box<dyn Error>> {
 
-    encrypt_vault_tokens(&mut config, password)?;
+    let enc_vault: VaultContent = encrypt_vault(vault, password)?;
 
     let mut output = Vec::new();
     let formatter = serde_json::ser::PrettyFormatter::with_indent(b"\t");
     let mut serializer = serde_json::Serializer::with_formatter(&mut output, formatter);
-    config.serialize(&mut serializer)?;
+    enc_vault.serialize(&mut serializer)?;
     fs::write(output_path, output)?;
-    println!("Encrypted config written to {IMPORT_OUTPUT}");
+    println!("Encrypted config written to {}", output_path.to_str().unwrap() );
     Ok(())
 }
 

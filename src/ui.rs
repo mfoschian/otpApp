@@ -1,13 +1,10 @@
-// use crate::vaults;
 use crate::storage;
-use crate::{
-	ui::AppStatus::Starting,
-	vaults::{Otp, VaultContent},
-};
+use crate::pwdmgr;
+use crate::vaults::{self, Otp, VaultContent, VaultKind};
 use eframe::egui;
-use hmac::digest::typenum::Le;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::path::PathBuf;
+
 
 const USER_VAULT_NAME: &str = ".otp-vault";
 
@@ -32,12 +29,12 @@ impl RunInfo {
 }
 enum AppStatus {
 	Starting,
-	GetVault,
-	ImportVault,
-	GetPassword,
+	AskVaultPassword,
 	ShowLoadingMessage,
 	Loading,
 	Running,
+	ImportVaultOptions,
+	ImportVault,
 	Error,
 }
 
@@ -55,7 +52,7 @@ impl OtpApp {
 
 	pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 		Self {
-			status: Starting,
+			status: AppStatus::Starting,
 			file_path: PathBuf::default(),
 			password: String::default(),
 			vault_info: RunInfo {
@@ -152,73 +149,46 @@ impl eframe::App for OtpApp {
 		egui::CentralPanel::default().show(ctx, |ui| {
 			match self.status {
 				AppStatus::Starting => {
-					self.header(ui, "Services");
-
-					ui.label(
-						egui::RichText::new("Nessun servizio configurato")
-							.strong()
-							.size(16.0),
-					);
-
-					let but_load = ui.button("Carica vault");
-					if but_load.clicked() {
-						self.status = AppStatus::GetVault;
-						ctx.request_repaint();
-					}
+					// TODO: splash screen
 
 					self.error = None;
-					self.password = String::default();
-				},
-				AppStatus::ImportVault => {
-					self.status = AppStatus::GetPassword;
-					ctx.request_repaint();
 
-					// ui.heading("Apertura vault");
-					// ui.add_space(10.0);
-					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
+					if let Some(password) = pwdmgr::retrieve_password() {
 
-					// // ctx.request_repaint();
-
-					// let files = rfd::FileDialog::new()
-					// 	// .add_filter("text", &["txt", "rs"])
-					// 	// .add_filter("rust", &["rs", "toml"])
-					// 	// .set_directory("/")
-					// 	.pick_file();
-
-					// let mut ok = false;
-
-					// if let Some(file) = files {
-					// 	if let Ok(path) = file.into_string() {
-					// 		self.file_path = path;
-					// 		self.status = AppStatus::GetPassword;
-					// 		ok = true;
-					// 	}
-					// }
-
-					// if !ok {
-					// 	self.status = AppStatus::Starting;
-					// }
-					// ctx.request_repaint();
-				},
-				AppStatus::GetVault => {
-					ui.heading("Apertura vault");
-					ui.add_space(10.0);
-					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
-
-					if let Some(home) = std::env::home_dir() {
-						self.file_path = home.join(USER_VAULT_NAME);
-						self.status = AppStatus::GetPassword;
+						if let Some(home) = std::env::home_dir() {
+							self.file_path = home.join(USER_VAULT_NAME);
+							self.password = password;
+							self.status = AppStatus::ShowLoadingMessage;
+						}
+						else {
+							self.error = Some("Vault non trovato".to_string()); // Forse da togliere
+							self.status = AppStatus::Running;
+						}
 					}
 					else {
-						self.error = Some("Vault non trovato".to_string());
-						self.status = AppStatus::Error;
+						self.password = String::default();
+						self.status = AppStatus::AskVaultPassword;
 					}
+					// self.header(ui, "Services");
 
+					// ui.label(
+					// 	egui::RichText::new("Nessun servizio configurato")
+					// 		.strong()
+					// 		.size(16.0),
+					// );
+
+					// let but_load = ui.button("Carica vault");
+					// if but_load.clicked() {
+					// 	self.status = AppStatus::LoadVault;
+					// 	ctx.request_repaint();
+					// }
+
+					self.error = None;
+					// self.password = String::default();
 					ctx.request_repaint();
 				},
-				AppStatus::GetPassword => {
+				AppStatus::AskVaultPassword => {
 					self.header_and_msg(ui,"Vault password", "Inserire la password");
-
 
 					ui.add_sized(
 						[300.0, 38.0],
@@ -228,17 +198,19 @@ impl eframe::App for OtpApp {
 					);
 					ui.add_space(12.0);
 
-					ui.horizontal(|ui| {
-						if ui.button("OK").clicked() {
-						self.status = AppStatus::ShowLoadingMessage;
-						ctx.request_repaint();
-					}
-
-						if ui.button("Annulla").clicked() {
-							self.status = AppStatus::Starting;
+					if ui.button("OK").clicked() {
+						if !self.password.is_empty() {
+							if let Ok(_) = pwdmgr::store_password(self.password) {
+								self.status = AppStatus::Starting;
+							}
+							else {
+								self.error = Some("Errore nel salvataggio della password".to_string());
+								self.status = AppStatus::Error;
+							}
+							self.password = String::default();
 							ctx.request_repaint();
 						}
-					});
+					}
 				},
 				AppStatus::ShowLoadingMessage => {
 					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
@@ -251,11 +223,6 @@ impl eframe::App for OtpApp {
 					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
 
 					let vault = storage::open_config(self.file_path, &self.password);
-					// let vault = vaults::get_vault_content(
-					// 	vaults::VaultKind::Aegis,
-					// 	&self.file_path,
-					// 	&self.password,
-					// );
 
 					if let Ok(v) = vault {
 						self.status = AppStatus::Running;
@@ -320,11 +287,73 @@ impl eframe::App for OtpApp {
 							});
 							ui.add_space(5.0);
 						}
+
+						if ui.button("Import").clicked() {
+							self.status = AppStatus::ImportVault;
+							ctx.request_repaint();
+						};
 					});
 
 					// Richiede un redraw continuo per mantenere l'animazione fluida del timer
 					// ctx.request_repaint();
+
+
+
 					ctx.request_repaint_after(Duration::from_secs(1));
+				},
+				AppStatus::ImportVaultOptions => {
+					self.header_and_msg(ui,"Import OTP","Scegli il file da importare" );
+
+					// TODO: Vault Type Combo
+
+					ui.add_sized(
+						[300.0, 38.0],
+						egui::TextEdit::singleline(&mut self.password)
+							.password(true)
+							.hint_text("Enter import password"),
+					);
+					ui.add_space(12.0);
+
+					ui.horizontal(|ui| {
+						if ui.button("OK").clicked() {
+							let files = rfd::FileDialog::new()
+								// .add_filter("text", &["txt", "rs"])
+								// .add_filter("rust", &["rs", "toml"])
+								// .set_directory("/")
+								.pick_file();
+
+							if let Some(path) = files {
+								self.file_path = path;
+								self.status = AppStatus::ImportVault;
+							}
+						}
+
+						if ui.button("Annulla").clicked() {
+							self.status = AppStatus::Running;
+							ctx.request_repaint();
+						}
+					});
+
+				},
+				AppStatus::ImportVault => {
+					ui.heading("Import in corso");
+					ui.add_space(10.0);
+					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
+
+					if let Ok(file_name) = self.file_path.into_string() {
+						if let Ok(vault) = vaults::get_vault_content(VaultKind::Aegis, &file_name, &self.password) {
+							vault.entries.iter().for_each(|entry| {
+								self.vault_info.vault.entries.push(*entry);
+							});
+							self.status = AppStatus::Running;
+						}
+					}
+					else {
+						self.error = Some("Vault non trovato".to_string());
+						self.status = AppStatus::Error;
+					}
+
+					ctx.request_repaint();
 				},
 				AppStatus::Error => {
 					self.header(ui,"Something went wrong");

@@ -21,7 +21,11 @@ argon2 = "0.5"
 keyring = { version = "3", features = ["windows-native"] }
 rand = "0.8"
 whoami = "1"
+image = { version = "0.25", default-features = false, features = ["ico"] }
 
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"

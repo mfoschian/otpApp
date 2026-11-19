@@ -45,6 +45,7 @@ enum AppStatus {
 	ImportVaultOptions,
 	ImportVault,
 	Error,
+	Test,
 }
 
 pub struct OtpApp {
@@ -191,22 +192,9 @@ impl eframe::App for OtpApp {
 						self.password = String::default();
 						self.status = AppStatus::AskVaultPassword;
 					}
-					// self.header(ui, "Services");
-
-					// ui.label(
-					// 	egui::RichText::new("Nessun servizio configurato")
-					// 		.strong()
-					// 		.size(16.0),
-					// );
-
-					// let but_load = ui.button("Carica vault");
-					// if but_load.clicked() {
-					// 	self.status = AppStatus::LoadVault;
-					// 	ctx.request_repaint();
-					// }
 
 					self.error = None;
-					// self.password = String::default();
+
 					ctx.request_repaint();
 				},
 				AppStatus::AskVaultPassword => {
@@ -319,6 +307,10 @@ impl eframe::App for OtpApp {
 									);
 								});
 							});
+							if g.response.clicked() {
+								self.status = AppStatus::Test;
+								ctx.request_repaint();
+							}
 							ui.add_space(5.0);
 						}
 
@@ -407,16 +399,24 @@ impl eframe::App for OtpApp {
 				},
 				AppStatus::Error => {
 					self.header(ui,"Something went wrong");
-
+					
 					self.show_error(ui, self.error.as_ref());
-
+					
 					ui.add_space(12.0);
-
+					
 					if ui.button("Restart").clicked() {
 						self.status = AppStatus::Starting;
 						ctx.request_repaint();
 					}
 				},
+				AppStatus::Test => {
+					self.header(ui,"Test Section");
+					
+					if ui.button("Back").clicked() {
+						self.status = AppStatus::Running;
+						ctx.request_repaint();
+					}
+				}
 			}
 		});
 	}

@@ -301,6 +301,7 @@ impl eframe::App for OtpApp {
 						}
 
 						if ui.button("Import").clicked() {
+							self.password = String::default();
 							self.status = AppStatus::ImportVaultOptions;
 							ctx.request_repaint();
 						};
@@ -357,7 +358,22 @@ impl eframe::App for OtpApp {
 							vault.entries.iter().for_each(|entry| {
 								self.vault_info.vault.entries.push(entry.clone());
 							});
-							self.status = AppStatus::Running;
+
+							// Save vault
+							self.error = Some("Errore nel salvataggio del vault".to_string());
+							self.status = AppStatus::Error;
+							if let Ok(password) = pwdmgr::retrieve_password() {
+								
+								if let Some(home) = std::env::home_dir() {
+									let output_path = home.join(USER_VAULT_NAME);
+									
+									if let Ok(_) = storage::save_vault(&vault, &output_path, &password) {
+										self.status = AppStatus::Running;
+										self.error = None;
+									}
+								}
+							}
+
 						}
 					}
 					else {

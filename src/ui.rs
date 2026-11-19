@@ -12,6 +12,7 @@ struct RunInfo {
 	vault: VaultContent,
 	otps: Vec<Otp>,
 	last_update: Instant,
+	min_remaining: u64,
 }
 
 impl RunInfo {
@@ -20,21 +21,27 @@ impl RunInfo {
 			vault,
 			otps: Vec::new(),
 			last_update: Instant::now(),
+			min_remaining: 0,
 		}
-	}
-
-	pub fn touch(self: &mut Self) {
-		self.last_update = Instant::now();
 	}
 
 	pub fn calc_otps(self: &mut Self) {
 		let now = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
-
-		self.otps = self.vault.get_otps(now).unwrap_or_default();		
+		.duration_since(UNIX_EPOCH)
+		.unwrap()
+		.as_secs();
+	
+		self.otps = self.vault.get_otps(now).unwrap_or_default();
+		let min = self.otps.iter().map(|otp| otp.remaining_seconds ).min();	
+		self.min_remaining = if let Some(value) = min {
+			value
+		}
+		else {
+			0
+		};
+		self.last_update = Instant::now();
 	}
+
 }
 enum AppStatus {
 	Starting,
@@ -67,7 +74,8 @@ impl OtpApp {
 			vault_info: RunInfo {
 				vault: VaultContent { entries: Vec::new() },
 				otps: Vec::new(),
-				last_update: Instant::now(),				
+				last_update: Instant::now(),
+				min_remaining: 0,			
 			},
 			error: None,
 		}
@@ -271,9 +279,8 @@ impl eframe::App for OtpApp {
 					ctx.request_repaint();
 				},
 				AppStatus::Running => {
-					if self.vault_info.last_update.elapsed() >= Duration::from_secs(1) {
-						self.vault_info.touch();
-
+					let elapsed = self.vault_info.last_update.elapsed().as_secs();
+					if elapsed >= self.vault_info.min_remaining {
 						self.vault_info.calc_otps();
 					}
 
@@ -301,19 +308,20 @@ impl eframe::App for OtpApp {
 									ui.with_layout(
 										egui::Layout::right_to_left(egui::Align::Center),
 										|ui| {
+											let remaining_seconds = otp.remaining_seconds - elapsed;
 											// Calcola la percentuale di progresso (da 1.0 a 0.0)
-											let progress = (otp.remaining_seconds as f32
+											let progress = (remaining_seconds as f32
 												/ otp.period as f32)
 												.clamp(0.0, 1.0);
 											let seconds_text =
-												format!("{:.0}s", otp.remaining_seconds);
+												format!("{:.0}s", remaining_seconds);
 
 											// Disegna la progress bar circolare
 											Self::draw_circular_progress(
 												ui,
 												progress,
 												&seconds_text,
-												otp.remaining_seconds
+												remaining_seconds
 											);
 										},
 									);

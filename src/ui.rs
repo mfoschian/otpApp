@@ -65,13 +65,26 @@ impl OtpApp {
 	}
 
 	/// Disegna una progress bar circolare personalizzata
-	fn draw_circular_progress(ui: &mut egui::Ui, progress: f32, text: &str) {
+	fn draw_circular_progress(ui: &mut egui::Ui, progress: f32, text: &str, remaining_secs: u64) {
 		let size = egui::vec2(45.0, 45.0);
 		let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
 		let painter = ui.painter_at(rect);
 
 		let center = rect.center();
 		let radius = rect.width() / 2.0 - 4.0;
+
+		let circle_color: egui::Color32 = if remaining_secs < 10 {
+			// red
+			egui::Color32::from_rgb(222, 4, 26)
+		}
+		else if remaining_secs < 15 {
+			// yellow
+			egui::Color32::from_rgb(247, 180, 22)
+		}
+		else {
+			// bluish
+			egui::Color32::from_rgb(0, 122, 255)
+		};
 
 		const CIRCLE_WIDTH: f32 = 3.0;
 		// Cerchio di sfondo
@@ -98,7 +111,7 @@ impl OtpApp {
 		if points.len() > 1 {
 			painter.add(egui::Shape::line(
 				points,
-				egui::Stroke::new(CIRCLE_WIDTH, egui::Color32::from_rgb(0, 122, 255)),
+				egui::Stroke::new(CIRCLE_WIDTH, circle_color),
 			));
 		}
 
@@ -217,7 +230,8 @@ impl eframe::App for OtpApp {
 
 					self.status = AppStatus::Loading;
 
-					ctx.request_repaint();
+					// ctx.request_repaint();
+					ctx.request_repaint_after(Duration::from_secs(1));
 				},
 				AppStatus::Loading => {
 					self.header_and_msg(ui, "Lettura vault","Caricamento in corso");
@@ -227,7 +241,7 @@ impl eframe::App for OtpApp {
 					if let Ok(found) = std::fs::exists(&vault_file) {
 						vault_found = found;
 					}
-					if( vault_found ) {
+					if vault_found {
 						let vault = storage::open_config(&vault_file, &self.password);
 	
 						if let Ok(v) = vault {
@@ -267,8 +281,9 @@ impl eframe::App for OtpApp {
 								ui.horizontal(|ui| {
 									// Informazioni del sito e codice OTP
 									ui.vertical(|ui| {
+										let label = format!("{} - {}", &otp.issuer, &otp.name);
 										ui.label(
-											egui::RichText::new(&otp.issuer).strong().size(16.0),
+											egui::RichText::new(&label).strong().size(16.0),
 										);
 										ui.label(
 											egui::RichText::new(&otp.code)
@@ -276,6 +291,7 @@ impl eframe::App for OtpApp {
 												.color(egui::Color32::from_rgb(46, 204, 113)),
 										);
 									});
+
 
 									ui.with_layout(
 										egui::Layout::right_to_left(egui::Align::Center),
@@ -292,6 +308,7 @@ impl eframe::App for OtpApp {
 												ui,
 												progress,
 												&seconds_text,
+												otp.remaining_seconds
 											);
 										},
 									);

@@ -13,7 +13,7 @@ fn main() -> Result<(), eframe::Error> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([350.0, 400.0])
+            .with_inner_size([500.0, 400.0])
             .with_title("OTP Manager"),
         ..Default::default()
     };

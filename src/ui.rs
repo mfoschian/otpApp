@@ -26,6 +26,15 @@ impl RunInfo {
 	pub fn touch(self: &mut Self) {
 		self.last_update = Instant::now();
 	}
+
+	pub fn calc_otps(self: &mut Self) {
+		let now = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.unwrap()
+			.as_secs();
+
+		self.otps = self.vault.get_otps(now).unwrap_or_default();		
+	}
 }
 enum AppStatus {
 	Starting,
@@ -247,6 +256,7 @@ impl eframe::App for OtpApp {
 						if let Ok(v) = vault {
 							self.status = AppStatus::Running;
 							self.vault_info = RunInfo::new(v);
+							self.vault_info.calc_otps();
 						} else {
 							self.error = Some("Lettura del vault fallita!".to_string());
 							self.status = AppStatus::Error;
@@ -264,12 +274,7 @@ impl eframe::App for OtpApp {
 					if self.vault_info.last_update.elapsed() >= Duration::from_secs(1) {
 						self.vault_info.touch();
 
-						let now = SystemTime::now()
-							.duration_since(UNIX_EPOCH)
-							.unwrap()
-							.as_secs();
-
-						self.vault_info.otps = self.vault_info.vault.get_otps(now).unwrap_or_default();
+						self.vault_info.calc_otps();
 					}
 
 					self.header(ui,"Services");

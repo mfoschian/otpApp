@@ -5,7 +5,7 @@
             "name": "Debug Aegis Reader",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/aegis_reader",
+            "program": "${workspaceFolder}/target/debug/otpApp",
             "args": [
                 "${workspaceFolder}/data/backup.json"
             ],

@@ -277,7 +277,7 @@ impl eframe::App for OtpApp {
 					// Tabella o lista visiva
 					egui::ScrollArea::vertical().show(ui, |ui| {
 						for otp in &mut self.vault_info.otps {
-							ui.group(|ui| {
+							let g = ui.group(|ui| {
 								ui.horizontal(|ui| {
 									// Informazioni del sito e codice OTP
 									ui.vertical(|ui| {
@@ -315,9 +315,11 @@ impl eframe::App for OtpApp {
 									);
 								});
 							});
-							if g.response.clicked() {
-								self.status = AppStatus::Test;
-								ctx.request_repaint();
+							let group = g.response.interact(egui::Sense::click());
+							if group.double_clicked() {
+								// self.status = AppStatus::Test;
+								// ctx.request_repaint();
+								ctx.copy_text(otp.code.clone());
 							}
 							ui.add_space(5.0);
 						}

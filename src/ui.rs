@@ -2,6 +2,7 @@ use crate::storage;
 use crate::pwdmgr;
 use crate::vaults::{self, Otp, VaultContent, VaultKind};
 use eframe::egui;
+use eframe::egui::Color32;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::path::PathBuf;
 
@@ -277,7 +278,7 @@ impl eframe::App for OtpApp {
 					// Tabella o lista visiva
 					egui::ScrollArea::vertical().show(ui, |ui| {
 						for otp in &mut self.vault_info.otps {
-							let g = ui.group(|ui| {
+							let group = ui.group(|ui| {
 								ui.horizontal(|ui| {
 									// Informazioni del sito e codice OTP
 									ui.vertical(|ui| {
@@ -291,7 +292,6 @@ impl eframe::App for OtpApp {
 												.color(egui::Color32::from_rgb(46, 204, 113)),
 										);
 									});
-
 
 									ui.with_layout(
 										egui::Layout::right_to_left(egui::Align::Center),
@@ -315,10 +315,15 @@ impl eframe::App for OtpApp {
 									);
 								});
 							});
-							let group = g.response.interact(egui::Sense::click());
-							if group.double_clicked() {
-								// self.status = AppStatus::Test;
-								// ctx.request_repaint();
+							let response = group.response.interact(egui::Sense::click());
+							if response.hovered() {
+								ui.painter().rect_stroke(
+									response.rect,
+									ui.style().visuals.widgets.noninteractive.rounding,
+									egui::Stroke::new(2.0_f32, Color32::RED),
+								);
+							}
+							if response.double_clicked() {
 								ctx.copy_text(otp.code.clone());
 							}
 							ui.add_space(5.0);

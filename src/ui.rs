@@ -454,7 +454,8 @@ impl eframe::App for OtpApp {
 								if let Some(home) = std::env::home_dir() {
 									let output_path = home.join(USER_VAULT_NAME);
 									
-									if let Ok(_) = storage::save_vault(&vault, &output_path, &password) {
+									if let Ok(_) = storage::save_vault(&self.vault_info.vault, &output_path, &password) {
+										self.vault_info.calc_otps();
 										self.status = AppStatus::Running;
 										self.error = None;
 									}

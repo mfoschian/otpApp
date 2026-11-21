@@ -13,6 +13,7 @@ const USER_VAULT_NAME: &str = ".otp-vault";
 enum AppError {
 	CannotRetrievePassword,
 	HomeDirectoryUnknown,
+	EntryNotFound,
 }
 
 impl std::fmt::Display for AppError {
@@ -20,6 +21,7 @@ impl std::fmt::Display for AppError {
         match self {
             AppError::CannotRetrievePassword => write!(f, "Impossibile recuperare la password dal gestore di credenziali"),
             AppError::HomeDirectoryUnknown => write!(f, "Home directory non conosciuta"),
+            AppError::EntryNotFound => write!(f, "Elemento non presente"),
         }
     }
 }
@@ -82,6 +84,7 @@ pub struct OtpApp {
 	password_confirm: String,
 	vault_info: RunInfo,
 	error: Option<String>,
+	otp_to_delete: Option<usize>,
 }
 
 impl OtpApp {
@@ -100,6 +103,7 @@ impl OtpApp {
 				last_update: Instant::now(),
 				min_remaining: 0,			
 			},
+			otp_to_delete: None,
 			error: None,
 		}
 	}
@@ -238,6 +242,19 @@ impl OtpApp {
 		}
 	}
 
+	fn remove_otp(vault: &mut VaultContent, ix: usize) -> Result<(), Box<dyn std::error::Error>> {
+		if ix >= vault.entries.len() {
+			Err(Box::new(AppError::EntryNotFound))
+		}
+		else {
+			vault.entries.remove(ix);
+			OtpApp::save_vault(vault)
+		}
+	}
+
+	fn otp_label(otp: &Otp) -> String {
+		format!("{} - {}", otp.issuer, otp.name)
+	}
 }
 
 impl eframe::App for OtpApp {
@@ -346,7 +363,10 @@ impl eframe::App for OtpApp {
 
 					// Tabella o lista visiva
 					egui::ScrollArea::vertical().show(ui, |ui| {
-						for otp in &mut self.vault_info.otps {
+						if let Some(error) = self.error.as_ref() {
+							OtpApp::error_box(ui, &error);
+						}
+						for (ix,otp) in &mut self.vault_info.otps.iter().enumerate() {
 							let group = ui.group(|ui| {
 								ui.horizontal(|ui| {
 									// Informazioni del sito e codice OTP
@@ -395,9 +415,57 @@ impl eframe::App for OtpApp {
 							if response.double_clicked() {
 								ctx.copy_text(otp.code.clone());
 							}
-							ui.add_space(5.0);
+
+							response.context_menu(|ui| {
+								if ui.button("Copia Token").clicked() {
+									ctx.copy_text(otp.code.clone());
+									ui.close_menu();
+								}
+								if ui.button("Elimina Voce").clicked() {
+									if let None = self.otp_to_delete {
+										self.otp_to_delete = Some(ix);
+									}
+									ui.close_menu();
+								}
+							});
+
+									ui.add_space(5.0);
 						}
 
+
+						if let Some(index) = self.otp_to_delete {
+
+							let label = OtpApp::otp_label(&self.vault_info.otps[index]);
+							egui::Window::new("Conferma eliminazione")
+								// .id(ui.make_persistent_id(index))
+								.collapsible(false)
+								.resizable(false)
+								.anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+								.show(ui.ctx(), |ui| {
+									ui.label(format!("Sei sicuro di voler eliminare {} ?", label));
+									ui.add_space(8.0);
+
+									ui.horizontal(|ui| {
+										if ui.button("Sì").clicked() {
+											self.otp_to_delete = None;
+											if let Err(err) = OtpApp::remove_otp(&mut self.vault_info.vault,  index) {
+												self.error = Some(format!("Cancellazione fallita: {}", err));
+											}
+											else {
+												self.vault_info.calc_otps();
+												return;
+											}
+										}
+
+										if ui.button("No").clicked() {
+											// println!("Eliminazione annullata.");
+											self.otp_to_delete = None;
+										}
+									});
+								});
+						}
+						
+												
 						if ui.button("Import").clicked() {
 							self.clear_passwords();
 							self.file_path = PathBuf::default();

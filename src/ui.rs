@@ -48,19 +48,20 @@ enum AppStatus {
 	Starting,
 	AskVaultPassword,
 	ShowLoadingMessage,
+	ChangeVaultPassword,
 	Loading,
 	Running,
 	ImportVaultOptions,
 	ImportVault,
 	Error,
-	Test,
 }
 
 pub struct OtpApp {
 	status: AppStatus,
-	// file_path: String,
 	file_path: PathBuf,
 	password: String,
+	new_password: String,
+	password_confirm: String,
 	vault_info: RunInfo,
 	error: Option<String>,
 }
@@ -73,6 +74,8 @@ impl OtpApp {
 			status: AppStatus::Starting,
 			file_path: PathBuf::default(),
 			password: String::default(),
+			new_password: String::default(),
+			password_confirm: String::default(),
 			vault_info: RunInfo {
 				vault: VaultContent { entries: Vec::new() },
 				otps: Vec::new(),
@@ -156,17 +159,44 @@ impl OtpApp {
 		ui.add_space(8.0);
 	}
 
-	fn show_error(&self, ui: &mut egui::Ui, message: Option<&String>) {
+	fn password_box(ui: &mut egui::Ui, label: &str, value: &mut String ) {
+		ui.vertical(|ui| {
+			ui.label(
+				egui::RichText::new(label).strong(), // .size(16.0),
+			);
+
+			ui.add_sized(
+				[300.0, 38.0],
+				egui::TextEdit::singleline(value)
+					.password(true)
+					// .hint_text("Enter your password"),
+			);
+			ui.add_space(12.0);
+		});
+	}
+
+	fn clear_passwords(self: &mut Self) {
+		self.password = String::default();
+		self.new_password = String::default();
+		self.password_confirm = String::default();
+	}
+
+	fn error_box(ui: &mut egui::Ui, msg: &str) {
+		ui.label(
+			egui::RichText::new(format!("Error: {}", msg))
+				.strong()
+				.color(egui::Color32::RED)
+				.size(16.0),
+		);
+	}
+
+	fn show_error(ui: &mut egui::Ui, message: Option<&String>) {
 		let msg = if let Some(text) = message {
 			text
 		} else {
 			"Unknown"
 		};
-		ui.label(
-			egui::RichText::new(format!("Error: {}", msg))
-				.strong()
-				.size(16.0),
-		);
+		OtpApp::error_box(ui, msg);
 	}
 
 }
@@ -198,7 +228,7 @@ impl eframe::App for OtpApp {
 						}
 					}
 					else {
-						self.password = String::default();
+						self.clear_passwords();
 						self.status = AppStatus::AskVaultPassword;
 					}
 
@@ -226,7 +256,7 @@ impl eframe::App for OtpApp {
 								self.error = Some("Errore nel salvataggio della password".to_string());
 								self.status = AppStatus::Error;
 							}
-							self.password = String::default();
+							self.clear_passwords();
 							ctx.request_repaint();
 						}
 					}
@@ -330,8 +360,15 @@ impl eframe::App for OtpApp {
 						}
 
 						if ui.button("Import").clicked() {
-							self.password = String::default();
+							self.clear_passwords();
+							self.file_path = PathBuf::default();
 							self.status = AppStatus::ImportVaultOptions;
+							ctx.request_repaint();
+						};
+
+						if ui.button("Password").clicked() {
+							self.clear_passwords();
+							self.status = AppStatus::ChangeVaultPassword;
 							ctx.request_repaint();
 						};
 					});
@@ -344,20 +381,13 @@ impl eframe::App for OtpApp {
 					ctx.request_repaint_after(Duration::from_secs(1));
 				},
 				AppStatus::ImportVaultOptions => {
-					self.header_and_msg(ui,"Import OTP","Scegli il file da importare" );
-
+					self.header(ui,"Import OTP");
+					
 					// TODO: Vault Type Combo
 
-					ui.add_sized(
-						[300.0, 38.0],
-						egui::TextEdit::singleline(&mut self.password)
-							.password(true)
-							.hint_text("Enter import password"),
-					);
-					ui.add_space(12.0);
-
 					ui.horizontal(|ui| {
-						if ui.button("OK").clicked() {
+							
+						if ui.button("Scegli file").clicked() {
 							let files = rfd::FileDialog::new()
 								// .add_filter("text", &["txt", "rs"])
 								// .add_filter("rust", &["rs", "toml"])
@@ -366,16 +396,44 @@ impl eframe::App for OtpApp {
 
 							if let Some(path) = files {
 								self.file_path = path;
-								self.status = AppStatus::ImportVault;
 							}
 						}
 
 						if ui.button("Annulla").clicked() {
 							self.status = AppStatus::Running;
 							ctx.request_repaint();
+							return;
 						}
 					});
 
+					let mut file_choosed = false;
+
+					if !self.file_path.is_empty() {
+						if let Some(path) = self.file_path.to_str() {
+							file_choosed = true;
+
+							ui.add_space(12.0);
+							ui.label(path);
+							ui.add_space(12.0);
+						}
+					}
+
+					if file_choosed {	
+						ui.add_sized(
+							[300.0, 38.0],
+							egui::TextEdit::singleline(&mut self.password)
+								.password(true)
+								.hint_text("Enter import password"),
+						);
+						ui.add_space(12.0);
+	
+						if file_choosed {
+							if ui.button("Importa").clicked() {
+								self.status = AppStatus::ImportVault;
+								ctx.request_repaint();
+							}
+						}
+					}
 				},
 				AppStatus::ImportVault => {
 					ui.heading("Import in corso");
@@ -412,10 +470,74 @@ impl eframe::App for OtpApp {
 
 					ctx.request_repaint();
 				},
+				AppStatus::ChangeVaultPassword => {
+					self.header_and_msg(ui,"Cambia Vault password", "Inserire la password");
+
+					ui.vertical(|ui| {
+						OtpApp::password_box( ui, "Vecchia password", &mut self.password);
+						OtpApp::password_box( ui, "Nuova password", &mut self.new_password);
+						OtpApp::password_box( ui, "Conferma password", &mut self.password_confirm);
+
+						if ui.button("OK").clicked() {
+							if self.password.is_empty()
+								|| self.new_password.is_empty()
+								|| self.password_confirm.is_empty() {
+
+								self.error = Some("Inserisci tutte le password".to_string());
+								ctx.request_repaint();
+								return;
+							}
+							if self.new_password != self.password_confirm  {
+								self.error = Some("La nuova password e quella di conferma non corrispondono".to_string());
+								ctx.request_repaint();
+								return;							
+							};
+
+							if let Ok(pwd) = pwdmgr::retrieve_password() {
+								if pwd != self.password {
+									self.error = Some("Vecchia password non valida".to_string());
+									ctx.request_repaint();
+								}
+								else {
+									if let Some(home) = std::env::home_dir() {
+										let output_path = home.join(USER_VAULT_NAME);
+										
+										if let Ok(_) = storage::save_vault(&self.vault_info.vault, &output_path, &self.new_password) {
+											let Ok(_) = pwdmgr::store_password(&self.new_password) else {
+												self.error = Some("Vault salvato, ma è fallito il salvataggio della password".to_string());
+												self.status = AppStatus::Error;
+												ctx.request_repaint();
+												return;
+											};
+
+											self.status = AppStatus::Running;
+											self.error = None;
+											self.clear_passwords();
+										}
+									}
+								}
+							}
+							else {
+								self.error = Some("Errore nella lettura della password da sistema !".to_string());
+								ctx.request_repaint();
+							}
+						}
+
+						if let Some(err) = self.error.as_ref() {
+							OtpApp::error_box(ui, err);
+						}
+
+						if ui.button("Annulla").clicked() {
+							self.clear_passwords();
+							self.status = AppStatus::Running;
+							ctx.request_repaint();
+						}
+					});
+				},
 				AppStatus::Error => {
 					self.header(ui,"Something went wrong");
 					
-					self.show_error(ui, self.error.as_ref());
+					OtpApp::show_error(ui, self.error.as_ref());
 					
 					ui.add_space(12.0);
 					
@@ -424,14 +546,6 @@ impl eframe::App for OtpApp {
 						ctx.request_repaint();
 					}
 				},
-				AppStatus::Test => {
-					self.header(ui,"Test Section");
-					
-					if ui.button("Back").clicked() {
-						self.status = AppStatus::Running;
-						ctx.request_repaint();
-					}
-				}
 			}
 		});
 	}

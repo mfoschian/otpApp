@@ -103,7 +103,7 @@ pub fn save_vault(vault: &VaultContent, output_path: &PathBuf, password: &str) -
     let mut serializer = serde_json::Serializer::with_formatter(&mut output, formatter);
     enc_vault.serialize(&mut serializer)?;
     fs::write(output_path, output)?;
-    println!("Encrypted config written to {}", output_path.to_str().unwrap() );
+    // println!("Encrypted config written to {}", output_path.to_str().unwrap() );
     Ok(())
 }
 

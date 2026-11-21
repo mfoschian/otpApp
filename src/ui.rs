@@ -9,6 +9,24 @@ use std::path::PathBuf;
 
 const USER_VAULT_NAME: &str = ".otp-vault";
 
+#[derive(Debug)]
+enum AppError {
+	CannotRetrievePassword,
+	HomeDirectoryUnknown,
+}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppError::CannotRetrievePassword => write!(f, "Impossibile recuperare la password dal gestore di credenziali"),
+            AppError::HomeDirectoryUnknown => write!(f, "Home directory non conosciuta"),
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
+
+
 struct RunInfo {
 	vault: VaultContent,
 	otps: Vec<Otp>,
@@ -197,6 +215,27 @@ impl OtpApp {
 			"Unknown"
 		};
 		OtpApp::error_box(ui, msg);
+	}
+
+	fn save_vault_with_pwd(password: &String, vault: &VaultContent) -> Result<(), Box<dyn std::error::Error>> {	
+		if let Some(home) = std::env::home_dir() {
+			let output_path = home.join(USER_VAULT_NAME);
+
+			return storage::save_vault(vault, &output_path, &password);
+		}
+		else {
+			return Err(Box::new(AppError::HomeDirectoryUnknown));
+		}
+
+	}
+
+	fn save_vault(vault: &VaultContent) -> Result<(), Box<dyn std::error::Error>> {
+		if let Ok(password) = pwdmgr::retrieve_password() {
+			OtpApp::save_vault_with_pwd(&password, vault)
+		}
+		else {
+			Err(Box::new(AppError::CannotRetrievePassword))
+		}
 	}
 
 }
@@ -449,19 +488,12 @@ impl eframe::App for OtpApp {
 							// Save vault
 							self.error = Some("Errore nel salvataggio del vault".to_string());
 							self.status = AppStatus::Error;
-							if let Ok(password) = pwdmgr::retrieve_password() {
-								
-								if let Some(home) = std::env::home_dir() {
-									let output_path = home.join(USER_VAULT_NAME);
-									
-									if let Ok(_) = storage::save_vault(&self.vault_info.vault, &output_path, &password) {
-										self.vault_info.calc_otps();
-										self.status = AppStatus::Running;
-										self.error = None;
-									}
-								}
-							}
 
+							if let Ok(_) = OtpApp::save_vault(&self.vault_info.vault) {
+								self.vault_info.calc_otps();
+								self.status = AppStatus::Running;
+								self.error = None;
+							}
 						}
 					}
 					else {
@@ -495,27 +527,28 @@ impl eframe::App for OtpApp {
 							};
 
 							if let Ok(pwd) = pwdmgr::retrieve_password() {
-								if pwd != self.password {
-									self.error = Some("Vecchia password non valida".to_string());
-									ctx.request_repaint();
+								if pwd == self.password {
+									let Ok(_) = OtpApp::save_vault_with_pwd(&self.new_password, &self.vault_info.vault) else {
+										self.error = Some("Vault salvato, ma è fallito il salvataggio della password".to_string());
+										self.status = AppStatus::Error;
+										ctx.request_repaint();
+										return;
+									};
+
+									let Ok(_) = pwdmgr::store_password(&self.new_password) else {
+										self.error = Some("Errore nel salvataggio della password nel sistema !".to_string());
+										self.status = AppStatus::Error;
+										ctx.request_repaint();
+										return;
+									};
+
+									self.status = AppStatus::Running;
+									self.error = None;
+									self.clear_passwords();
 								}
 								else {
-									if let Some(home) = std::env::home_dir() {
-										let output_path = home.join(USER_VAULT_NAME);
-										
-										if let Ok(_) = storage::save_vault(&self.vault_info.vault, &output_path, &self.new_password) {
-											let Ok(_) = pwdmgr::store_password(&self.new_password) else {
-												self.error = Some("Vault salvato, ma è fallito il salvataggio della password".to_string());
-												self.status = AppStatus::Error;
-												ctx.request_repaint();
-												return;
-											};
-
-											self.status = AppStatus::Running;
-											self.error = None;
-											self.clear_passwords();
-										}
-									}
+									self.error = Some("Vecchia password non valida".to_string());
+									ctx.request_repaint();
 								}
 							}
 							else {

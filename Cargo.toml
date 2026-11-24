@@ -16,12 +16,15 @@ sha1 = "0.10"
 sha2 = "0.10"
 hmac = "0.12"
 data-encoding = "2.6"
+percent-encoding = "2"
+rqrr = "0.8"
 rfd = "0.18.0"
 argon2 = "0.5"
 keyring = { version = "3", features = ["windows-native"] }
 rand = "0.8"
 whoami = "1"
-image = { version = "0.25", default-features = false, features = ["ico"] }
+image = { version = "0.25", default-features = false, features = ["bmp", "ico", "jpeg", "png"] }
+url = "2"
 
 
 [target.'cfg(windows)'.dependencies]

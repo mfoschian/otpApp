@@ -1,4 +1,5 @@
 mod aegis;
+mod qr_code;
 
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -44,6 +45,7 @@ impl VaultContent {
 #[derive(Debug)]
 pub enum VaultKind {
 	Aegis,
+	QrCode,
 }
 
 pub fn get_vault_content(
@@ -53,8 +55,7 @@ pub fn get_vault_content(
 ) -> Result<VaultContent, Box<dyn Error>> {
 	match kind {
 		VaultKind::Aegis => aegis::read_vault(file_name, password),
-
-		// _ => Err(format!("Vault type not supported: {:?}", kind).into()),
+		VaultKind::QrCode => qr_code::read_vault(file_name),
 	}
 }
 

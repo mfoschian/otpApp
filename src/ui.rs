@@ -76,9 +76,16 @@ enum AppStatus {
 	Error,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImportSource {
+	Aegis,
+	QrCode,
+}
+
 pub struct OtpApp {
 	status: AppStatus,
 	file_path: PathBuf,
+	import_source: ImportSource,
 	password: String,
 	new_password: String,
 	password_confirm: String,
@@ -94,6 +101,7 @@ impl OtpApp {
 		Self {
 			status: AppStatus::Starting,
 			file_path: PathBuf::default(),
+			import_source: ImportSource::Aegis,
 			password: String::default(),
 			new_password: String::default(),
 			password_confirm: String::default(),
@@ -469,6 +477,7 @@ impl eframe::App for OtpApp {
 						if ui.button("Import").clicked() {
 							self.clear_passwords();
 							self.file_path = PathBuf::default();
+							self.import_source = ImportSource::Aegis;
 							self.status = AppStatus::ImportVaultOptions;
 							ctx.request_repaint();
 						};
@@ -489,17 +498,35 @@ impl eframe::App for OtpApp {
 				},
 				AppStatus::ImportVaultOptions => {
 					self.header(ui,"Import OTP");
-					
-					// TODO: Vault Type Combo
+
+					ui.horizontal(|ui| {
+						let mut source_changed = ui.radio_value(
+							&mut self.import_source,
+							ImportSource::Aegis,
+							"Backup Aegis",
+						).changed();
+						source_changed |= ui.radio_value(
+							&mut self.import_source,
+							ImportSource::QrCode,
+							"Immagine QR OTP",
+						).changed();
+						if source_changed {
+							self.file_path = PathBuf::default();
+							self.clear_passwords();
+						}
+					});
 
 					ui.horizontal(|ui| {
 							
 						if ui.button("Scegli file").clicked() {
-							let files = rfd::FileDialog::new()
-								// .add_filter("text", &["txt", "rs"])
-								// .add_filter("rust", &["rs", "toml"])
-								// .set_directory("/")
-								.pick_file();
+							let files = match self.import_source {
+								ImportSource::Aegis => rfd::FileDialog::new()
+									// .add_filter("Backup Aegis", &["json"])
+									.pick_file(),
+								ImportSource::QrCode => rfd::FileDialog::new()
+									//.add_filter("Immagini QR", &["png", "jpg", "jpeg", "bmp"])
+									.pick_file(),
+							};
 
 							if let Some(path) = files {
 								self.file_path = path;
@@ -525,7 +552,7 @@ impl eframe::App for OtpApp {
 						}
 					}
 
-					if file_choosed {	
+					if file_choosed && self.import_source == ImportSource::Aegis {
 						ui.add_sized(
 							[300.0, 38.0],
 							egui::TextEdit::singleline(&mut self.password)
@@ -533,40 +560,53 @@ impl eframe::App for OtpApp {
 								.hint_text("Enter import password"),
 						);
 						ui.add_space(12.0);
-	
-						if file_choosed {
-							if ui.button("Importa").clicked() {
-								self.status = AppStatus::ImportVault;
-								ctx.request_repaint();
-							}
+					}
+
+					if file_choosed {
+						if ui.button("Importa").clicked() {
+							self.status = AppStatus::ImportVault;
+							ctx.request_repaint();
 						}
 					}
 				},
 				AppStatus::ImportVault => {
 					ui.heading("Import in corso");
 					ui.add_space(10.0);
-					// ui.label(egui::RichText::new("Scegli il file da importare".to_string()).strong().size(16.0));
+					let kind = match self.import_source {
+						ImportSource::Aegis => VaultKind::Aegis,
+						ImportSource::QrCode => VaultKind::QrCode,
+					};
+					let imported = self.file_path.to_str()
+						.ok_or_else(|| "Percorso del file non valido.".to_string())
+						.and_then(|file_name| {
+							vaults::get_vault_content(kind, file_name, &self.password)
+								.map_err(|error| error.to_string())
+						});
 
-					if let Ok(file_name) = self.file_path.clone().into_string() {
-						if let Ok(vault) = vaults::get_vault_content(VaultKind::Aegis, &file_name, &self.password) {
-							vault.entries.iter().for_each(|entry| {
-								self.vault_info.vault.entries.push(entry.clone());
-							});
+					match imported {
+						Ok(imported_vault) => {
+							let mut updated_vault = VaultContent {
+								entries: self.vault_info.vault.entries.clone(),
+							};
+							updated_vault.entries.extend(imported_vault.entries);
 
-							// Save vault
-							self.error = Some("Errore nel salvataggio del vault".to_string());
-							self.status = AppStatus::Error;
-
-							if let Ok(_) = OtpApp::save_vault(&self.vault_info.vault) {
-								self.vault_info.calc_otps();
-								self.status = AppStatus::Running;
-								self.error = None;
+							match OtpApp::save_vault(&updated_vault) {
+								Ok(()) => {
+									self.vault_info.vault = updated_vault;
+									self.vault_info.calc_otps();
+									self.status = AppStatus::Running;
+									self.error = None;
+								}
+								Err(error) => {
+									self.error = Some(format!("Salvataggio del vault fallito: {}", error));
+									self.status = AppStatus::Error;
+								}
 							}
 						}
-					}
-					else {
-						self.error = Some("Vault non trovato".to_string());
-						self.status = AppStatus::Error;
+						Err(error) => {
+							self.error = Some(format!("Importazione fallita: {}", error));
+							self.status = AppStatus::Error;
+						}
 					}
 
 					ctx.request_repaint();

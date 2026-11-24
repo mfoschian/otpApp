@@ -1,6 +1,6 @@
 # OTP Manager
 
-OTP Manager è un'applicazione desktop per Windows scritta in Rust che legge backup cifrati di Aegis Authenticator, importa i token OTP e li mostra in un'interfaccia grafica con aggiornamento automatico.
+OTP Manager è un'applicazione desktop per Windows scritta in Rust che importa token OTP da backup Aegis e da immagini QR, quindi li mostra in un'interfaccia grafica con aggiornamento automatico.
 
 Il programma è pensato per l'uso locale su una singola installazione Windows.
 
@@ -8,6 +8,7 @@ Il programma è pensato per l'uso locale su una singola installazione Windows.
 
 - interfaccia grafica desktop basata su `egui`/`eframe`
 - importazione di un backup JSON cifrato Aegis tramite una finestra di selezione file
+- importazione di un codice OTP da un'immagine QR contenente una URI `otpauth://`
 - decifratura della master key Aegis mediante `scrypt`
 - decifratura del database Aegis mediante `AES-256-GCM`
 - supporto alle entry:
@@ -27,7 +28,7 @@ Il programma è pensato per l'uso locale su una singola installazione Windows.
 2. Se la password non è ancora disponibile, richiede all'utente di configurarla.
 3. Cerca il vault locale in `~/.otp-vault`.
 4. Decifra i segreti del vault e genera i codici OTP.
-5. Dal pannello `Services` è possibile importare un nuovo backup Aegis.
+5. Dal pannello `Services` è possibile importare un backup Aegis o un'immagine QR OTP.
 
 ## Vault locale
 
@@ -43,9 +44,10 @@ ATTENZIONE: attualmente una volta inserita la password non può essere modificat
 
 ## Importazione
 
-- Una volta avviata l'applicazione il tasto "Import" permette di importare una file json di export da Aegis (protetto da password).
-- Il pannello di import presenta una casella per l'inserimento della password
-- Con il tasto "Ok" si può selezionare poi il file json da importare
+- Una volta avviata l'applicazione, il tasto "Import" permette di scegliere tra un backup Aegis e un'immagine QR OTP.
+- Per Aegis, selezionare il file JSON e inserire la password del backup.
+- Per un QR, selezionare un'immagine PNG, JPEG o BMP contenente una URI OTP standard (`otpauth://totp/...` oppure `otpauth://hotp/...`).
+- I QR proprietari di trasferimento account Microsoft Authenticator che non contengono una URI `otpauth://` non sono supportati.
 - Le informazioni importate vengono aggiunte ai servizi OTP attualmente caricati
 - Il vault dell'applicazione viene aggiornato
 
@@ -55,17 +57,16 @@ ATTENZIONE: attualmente una volta inserita la password non può essere modificat
 - Windows
 - Rust toolchain con Cargo
 - Una versione recente di Rust compatibile con le dipendenze del progetto
-- Un backup Aegis in formato JSON cifrato
+- Un backup Aegis in formato JSON cifrato, oppure un'immagine QR OTP standard
 
 
 ## Utilizzo
 
 1. Avviare OTP Manager.
 2. Inserire la password dell'applicazione al primo avvio.
-3. Importare il backup Aegis con il pulsante `Import`.
-4. Inserire la password del backup Aegis.
-5. Selezionare il file JSON esportato da Aegis.
-6. Consultare i codici nella lista dei servizi.
+3. Aprire il pannello `Import` e scegliere `Backup Aegis` o `Immagine QR OTP`.
+4. Se si importa Aegis, inserire la password e selezionare il file JSON; per un QR, selezionare l'immagine.
+5. Consultare i codici nella lista dei servizi.
 
 ## Sicurezza
 
